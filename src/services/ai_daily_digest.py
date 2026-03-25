@@ -238,6 +238,7 @@ def fetch_feed(feed: Dict[str, str], max_age_days: int) -> List[Dict[str, Any]]:
 class AIDailyDigestService:
     def __init__(self):
         self.config = get_config()
+        self.last_error = None
         self.max_age_days = getattr(self.config, 'ai_daily_digest_days', 2)
         self.top_n = getattr(self.config, 'ai_daily_digest_top_n', 15)
         self.language = getattr(self.config, 'ai_daily_digest_language', 'zh')
@@ -278,6 +279,7 @@ class AIDailyDigestService:
             resp = litellm.completion(**kwargs)
             return resp.choices[0].message.content
         except Exception as e:
+            self.last_error = f"LLM 接口报错: {str(e)}"
             logger.error(f"[AIDigest] LLM Call failed: {e}")
             return ""
 
@@ -305,6 +307,7 @@ class AIDailyDigestService:
                         article['keywords'] = res.get('keywords', [])[:4]
                         scored_articles.append(article)
             except Exception as e:
+                self.last_error = f"JSON 解析失败: {str(e)} \n 返回内容: {result_str[:200]}"
                 logger.error(f"[AIDigest] Scoring JSON parse error: {e}")
         return scored_articles
 
@@ -382,6 +385,7 @@ class AIDailyDigestService:
                         batch[idx]['summary'] = res.get('summary', '')
                         batch[idx]['reason'] = res.get('reason', '')
             except Exception as e:
+                self.last_error = f"Summary JSON 解析失败: {str(e)}"
                 logger.error(f"[AIDigest] Summary JSON parse error: {e}")
         return top_articles
 
@@ -613,7 +617,7 @@ class AIDailyDigestService:
         if not articles:
             msg = "未获取到任何有价值资讯。"
             if self.last_error:
-                msg += f"\n\n> ⚠️ **诊断信息**: {self.last_error}\n> 请检查 API Key 是否有效，以及 `LITELLM_MODEL` 配置是否正确。"
+                msg += f"\n\n> ⚠️ **抓取/诊断信息**: {self.last_error}"
             return msg
         scored = self.score_articles(articles)
         top = self.summarize_top_articles(scored)
