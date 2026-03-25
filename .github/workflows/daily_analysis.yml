@@ -15,6 +15,8 @@ on:
         type: choice
         options:
           - full          # 完整分析（股票+大盘）
+          - digest        # 技术资讯摘要 (AI Daily Digest)
+          - full+digest   # 完整分析 + 技术资讯摘要
           - market-only   # 仅大盘复盘
           - stocks-only   # 仅股票分析
       force_run:
@@ -170,6 +172,12 @@ jobs:
           MARKET_REVIEW_ENABLED: ${{ vars.MARKET_REVIEW_ENABLED || secrets.MARKET_REVIEW_ENABLED || 'true' }}
           ANALYSIS_DELAY: ${{ vars.ANALYSIS_DELAY || secrets.ANALYSIS_DELAY || '0' }}
           TRADING_DAY_CHECK_ENABLED: ${{ vars.TRADING_DAY_CHECK_ENABLED || secrets.TRADING_DAY_CHECK_ENABLED || 'true' }}
+
+          # AI Daily Digest 配置
+          AI_DAILY_DIGEST_ENABLED: ${{ vars.AI_DAILY_DIGEST_ENABLED || secrets.AI_DAILY_DIGEST_ENABLED || 'false' }}
+          AI_DAILY_DIGEST_DAYS: ${{ vars.AI_DAILY_DIGEST_DAYS || secrets.AI_DAILY_DIGEST_DAYS || '2' }}
+          AI_DAILY_DIGEST_TOP_N: ${{ vars.AI_DAILY_DIGEST_TOP_N || secrets.AI_DAILY_DIGEST_TOP_N || '15' }}
+          AI_DAILY_DIGEST_LANGUAGE: ${{ vars.AI_DAILY_DIGEST_LANGUAGE || secrets.AI_DAILY_DIGEST_LANGUAGE || 'zh' }}
           
           # ==========================================
           # 系统配置
@@ -242,7 +250,14 @@ jobs:
           echo "  Discord: $([ -n "$DISCORD_WEBHOOK_URL" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "  AstrBot: $([ -n "$ASTRBOT_URL" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "  Slack: $(([ -n "$SLACK_WEBHOOK_URL" ] || ([ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_CHANNEL_ID" ])) && echo '✅ 已配置' || echo '⚪ 未配置')"
+          echo ""
+          echo "【AI Daily Digest】"
+          echo "  Enabled: $AI_DAILY_DIGEST_ENABLED"
+          echo "  Days: $AI_DAILY_DIGEST_DAYS"
+          echo "  Top N: $AI_DAILY_DIGEST_TOP_N"
+          echo "  Language: $AI_DAILY_DIGEST_LANGUAGE"
           echo "=========================================="
+          echo ""
           echo ""
           
           # 构建命令行参数
@@ -257,7 +272,12 @@ jobs:
             python main.py --market-review $FORCE_RUN_ARG
           elif [ "$MODE" = "stocks-only" ]; then
             python main.py --no-market-review $FORCE_RUN_ARG
+          elif [ "$MODE" = "digest" ]; then
+            python main.py --digest-only --no-market-review $FORCE_RUN_ARG
+          elif [ "$MODE" = "full+digest" ]; then
+            python main.py --digest $FORCE_RUN_ARG
           else
+            # Default or 'full'
             python main.py $FORCE_RUN_ARG
           fi
       
