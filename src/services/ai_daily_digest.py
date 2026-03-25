@@ -17,7 +17,7 @@ import logging
 import re
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 import litellm
@@ -27,98 +27,98 @@ logger = logging.getLogger(__name__)
 
 # 预设的 90 个精选 RSS 源 (部分示例，可全量补充)
 RSS_FEEDS = [
-  { "name": "simonwillison.net", "xmlUrl": "https://simonwillison.net/atom/everything/", "htmlUrl": "https://simonwillison.net" },
-  { "name": "jeffgeerling.com", "xmlUrl": "https://www.jeffgeerling.com/blog.xml", "htmlUrl": "https://jeffgeerling.com" },
-  { "name": "seangoedecke.com", "xmlUrl": "https://www.seangoedecke.com/rss.xml", "htmlUrl": "https://seangoedecke.com" },
-  { "name": "krebsonsecurity.com", "xmlUrl": "https://krebsonsecurity.com/feed/", "htmlUrl": "https://krebsonsecurity.com" },
-  { "name": "daringfireball.net", "xmlUrl": "https://daringfireball.net/feeds/main", "htmlUrl": "https://daringfireball.net" },
-  { "name": "ericmigi.com", "xmlUrl": "https://ericmigi.com/rss.xml", "htmlUrl": "https://ericmigi.com" },
-  { "name": "antirez.com", "xmlUrl": "http://antirez.com/rss", "htmlUrl": "http://antirez.com" },
-  { "name": "idiallo.com", "xmlUrl": "https://idiallo.com/feed.rss", "htmlUrl": "https://idiallo.com" },
-  { "name": "maurycyz.com", "xmlUrl": "https://maurycyz.com/index.xml", "htmlUrl": "https://maurycyz.com" },
-  { "name": "pluralistic.net", "xmlUrl": "https://pluralistic.net/feed/", "htmlUrl": "https://pluralistic.net" },
-  { "name": "shkspr.mobi", "xmlUrl": "https://shkspr.mobi/blog/feed/", "htmlUrl": "https://shkspr.mobi" },
-  { "name": "lcamtuf.substack.com", "xmlUrl": "https://lcamtuf.substack.com/feed", "htmlUrl": "https://lcamtuf.substack.com" },
-  { "name": "mitchellh.com", "xmlUrl": "https://mitchellh.com/feed.xml", "htmlUrl": "https://mitchellh.com" },
-  { "name": "dynomight.net", "xmlUrl": "https://dynomight.net/feed.xml", "htmlUrl": "https://dynomight.net" },
-  { "name": "utcc.utoronto.ca/~cks", "xmlUrl": "https://utcc.utoronto.ca/~cks/space/blog/?atom", "htmlUrl": "https://utcc.utoronto.ca/~cks" },
-  { "name": "xeiaso.net", "xmlUrl": "https://xeiaso.net/blog.rss", "htmlUrl": "https://xeiaso.net" },
-  { "name": "devblogs.microsoft.com/oldnewthing", "xmlUrl": "https://devblogs.microsoft.com/oldnewthing/feed", "htmlUrl": "https://devblogs.microsoft.com/oldnewthing" },
-  { "name": "righto.com", "xmlUrl": "https://www.righto.com/feeds/posts/default", "htmlUrl": "https://righto.com" },
-  { "name": "lucumr.pocoo.org", "xmlUrl": "https://lucumr.pocoo.org/feed.atom", "htmlUrl": "https://lucumr.pocoo.org" },
-  { "name": "skyfall.dev", "xmlUrl": "https://skyfall.dev/rss.xml", "htmlUrl": "https://skyfall.dev" },
-  { "name": "garymarcus.substack.com", "xmlUrl": "https://garymarcus.substack.com/feed", "htmlUrl": "https://garymarcus.substack.com" },
-  { "name": "rachelbythebay.com", "xmlUrl": "https://rachelbythebay.com/w/atom.xml", "htmlUrl": "https://rachelbythebay.com" },
-  { "name": "overreacted.io", "xmlUrl": "https://overreacted.io/rss.xml", "htmlUrl": "https://overreacted.io" },
-  { "name": "timsh.org", "xmlUrl": "https://timsh.org/rss/", "htmlUrl": "https://timsh.org" },
-  { "name": "johndcook.com", "xmlUrl": "https://www.johndcook.com/blog/feed/", "htmlUrl": "https://johndcook.com" },
-  { "name": "gilesthomas.com", "xmlUrl": "https://gilesthomas.com/feed/rss.xml", "htmlUrl": "https://gilesthomas.com" },
-  { "name": "matklad.github.io", "xmlUrl": "https://matklad.github.io/feed.xml", "htmlUrl": "https://matklad.github.io" },
-  { "name": "derekthompson.org", "xmlUrl": "https://www.theatlantic.com/feed/author/derek-thompson/", "htmlUrl": "https://derekthompson.org" },
-  { "name": "evanhahn.com", "xmlUrl": "https://evanhahn.com/feed.xml", "htmlUrl": "https://evanhahn.com" },
-  { "name": "terriblesoftware.org", "xmlUrl": "https://terriblesoftware.org/feed/", "htmlUrl": "https://terriblesoftware.org" },
-  { "name": "rakhim.exotext.com", "xmlUrl": "https://rakhim.exotext.com/rss.xml", "htmlUrl": "https://rakhim.exotext.com" },
-  { "name": "joanwestenberg.com", "xmlUrl": "https://joanwestenberg.com/rss", "htmlUrl": "https://joanwestenberg.com" },
-  { "name": "xania.org", "xmlUrl": "https://xania.org/feed", "htmlUrl": "https://xania.org" },
-  { "name": "micahflee.com", "xmlUrl": "https://micahflee.com/feed/", "htmlUrl": "https://micahflee.com" },
-  { "name": "nesbitt.io", "xmlUrl": "https://nesbitt.io/feed.xml", "htmlUrl": "https://nesbitt.io" },
-  { "name": "construction-physics.com", "xmlUrl": "https://www.construction-physics.com/feed", "htmlUrl": "https://construction-physics.com" },
-  { "name": "tedium.co", "xmlUrl": "https://feed.tedium.co/", "htmlUrl": "https://tedium.co" },
-  { "name": "susam.net", "xmlUrl": "https://susam.net/feed.xml", "htmlUrl": "https://susam.net" },
-  { "name": "entropicthoughts.com", "xmlUrl": "https://entropicthoughts.com/feed.xml", "htmlUrl": "https://entropicthoughts.com" },
-  { "name": "buttondown.com/hillelwayne", "xmlUrl": "https://buttondown.com/hillelwayne/rss", "htmlUrl": "https://buttondown.com/hillelwayne" },
-  { "name": "dwarkesh.com", "xmlUrl": "https://www.dwarkeshpatel.com/feed", "htmlUrl": "https://dwarkesh.com" },
-  { "name": "borretti.me", "xmlUrl": "https://borretti.me/feed.xml", "htmlUrl": "https://borretti.me" },
-  { "name": "wheresyoured.at", "xmlUrl": "https://www.wheresyoured.at/rss/", "htmlUrl": "https://wheresyoured.at" },
-  { "name": "jayd.ml", "xmlUrl": "https://jayd.ml/feed.xml", "htmlUrl": "https://jayd.ml" },
-  { "name": "minimaxir.com", "xmlUrl": "https://minimaxir.com/index.xml", "htmlUrl": "https://minimaxir.com" },
-  { "name": "geohot.github.io", "xmlUrl": "https://geohot.github.io/blog/feed.xml", "htmlUrl": "https://geohot.github.io" },
-  { "name": "paulgraham.com", "xmlUrl": "http://www.aaronsw.com/2002/feeds/pgessays.rss", "htmlUrl": "https://paulgraham.com" },
-  { "name": "filfre.net", "xmlUrl": "https://www.filfre.net/feed/", "htmlUrl": "https://filfre.net" },
-  { "name": "blog.jim-nielsen.com", "xmlUrl": "https://blog.jim-nielsen.com/feed.xml", "htmlUrl": "https://blog.jim-nielsen.com" },
-  { "name": "dfarq.homeip.net", "xmlUrl": "https://dfarq.homeip.net/feed/", "htmlUrl": "https://dfarq.homeip.net" },
-  { "name": "jyn.dev", "xmlUrl": "https://jyn.dev/atom.xml", "htmlUrl": "https://jyn.dev" },
-  { "name": "geoffreylitt.com", "xmlUrl": "https://www.geoffreylitt.com/feed.xml", "htmlUrl": "https://geoffreylitt.com" },
-  { "name": "downtowndougbrown.com", "xmlUrl": "https://www.downtowndougbrown.com/feed/", "htmlUrl": "https://downtowndougbrown.com" },
-  { "name": "brutecat.com", "xmlUrl": "https://brutecat.com/rss.xml", "htmlUrl": "https://brutecat.com" },
-  { "name": "eli.thegreenplace.net", "xmlUrl": "https://eli.thegreenplace.net/feeds/all.atom.xml", "htmlUrl": "https://eli.thegreenplace.net" },
-  { "name": "abortretry.fail", "xmlUrl": "https://www.abortretry.fail/feed", "htmlUrl": "https://abortretry.fail" },
-  { "name": "fabiensanglard.net", "xmlUrl": "https://fabiensanglard.net/rss.xml", "htmlUrl": "https://fabiensanglard.net" },
-  { "name": "oldvcr.blogspot.com", "xmlUrl": "https://oldvcr.blogspot.com/feeds/posts/default", "htmlUrl": "https://oldvcr.blogspot.com" },
-  { "name": "bogdanthegeek.github.io", "xmlUrl": "https://bogdanthegeek.github.io/blog/index.xml", "htmlUrl": "https://bogdanthegeek.github.io" },
-  { "name": "hugotunius.se", "xmlUrl": "https://hugotunius.se/feed.xml", "htmlUrl": "https://hugotunius.se" },
-  { "name": "gwern.net", "xmlUrl": "https://gwern.substack.com/feed", "htmlUrl": "https://gwern.net" },
-  { "name": "berthub.eu", "xmlUrl": "https://berthub.eu/articles/index.xml", "htmlUrl": "https://berthub.eu" },
-  { "name": "chadnauseam.com", "xmlUrl": "https://chadnauseam.com/rss.xml", "htmlUrl": "https://chadnauseam.com" },
-  { "name": "simone.org", "xmlUrl": "https://simone.org/feed/", "htmlUrl": "https://simone.org" },
-  { "name": "it-notes.dragas.net", "xmlUrl": "https://it-notes.dragas.net/feed/", "htmlUrl": "https://it-notes.dragas.net" },
-  { "name": "beej.us", "xmlUrl": "https://beej.us/blog/rss.xml", "htmlUrl": "https://beej.us" },
-  { "name": "hey.paris", "xmlUrl": "https://hey.paris/index.xml", "htmlUrl": "https://hey.paris" },
-  { "name": "danielwirtz.com", "xmlUrl": "https://danielwirtz.com/rss.xml", "htmlUrl": "https://danielwirtz.com" },
-  { "name": "matduggan.com", "xmlUrl": "https://matduggan.com/rss/", "htmlUrl": "https://matduggan.com" },
-  { "name": "refactoringenglish.com", "xmlUrl": "https://refactoringenglish.com/index.xml", "htmlUrl": "https://refactoringenglish.com" },
-  { "name": "worksonmymachine.substack.com", "xmlUrl": "https://worksonmymachine.substack.com/feed", "htmlUrl": "https://worksonmymachine.substack.com" },
-  { "name": "philiplaine.com", "xmlUrl": "https://philiplaine.com/index.xml", "htmlUrl": "https://philiplaine.com" },
-  { "name": "steveblank.com", "xmlUrl": "https://steveblank.com/feed/", "htmlUrl": "https://steveblank.com" },
-  { "name": "bernsteinbear.com", "xmlUrl": "https://bernsteinbear.com/feed.xml", "htmlUrl": "https://bernsteinbear.com" },
-  { "name": "danieldelaney.net", "xmlUrl": "https://danieldelaney.net/feed", "htmlUrl": "https://danieldelaney.net" },
-  { "name": "troyhunt.com", "xmlUrl": "https://www.troyhunt.com/rss/", "htmlUrl": "https://troyhunt.com" },
-  { "name": "herman.bearblog.dev", "xmlUrl": "https://herman.bearblog.dev/feed/", "htmlUrl": "https://herman.bearblog.dev" },
-  { "name": "tomrenner.com", "xmlUrl": "https://tomrenner.com/index.xml", "htmlUrl": "https://tomrenner.com" },
-  { "name": "blog.pixelmelt.dev", "xmlUrl": "https://blog.pixelmelt.dev/rss/", "htmlUrl": "https://blog.pixelmelt.dev" },
-  { "name": "martinalderson.com", "xmlUrl": "https://martinalderson.com/feed.xml", "htmlUrl": "https://martinalderson.com" },
-  { "name": "danielchasehooper.com", "xmlUrl": "https://danielchasehooper.com/feed.xml", "htmlUrl": "https://danielchasehooper.com" },
-  { "name": "chiark.greenend.org.uk/~sgtatham", "xmlUrl": "https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/feed.xml", "htmlUrl": "https://chiark.greenend.org.uk/~sgtatham" },
-  { "name": "grantslatton.com", "xmlUrl": "https://grantslatton.com/rss.xml", "htmlUrl": "https://grantslatton.com" },
-  { "name": "experimental-history.com", "xmlUrl": "https://www.experimental-history.com/feed", "htmlUrl": "https://experimental-history.com" },
-  { "name": "anildash.com", "xmlUrl": "https://anildash.com/feed.xml", "htmlUrl": "https://anildash.com" },
-  { "name": "aresluna.org", "xmlUrl": "https://aresluna.org/main.rss", "htmlUrl": "https://aresluna.org" },
-  { "name": "michael.stapelberg.ch", "xmlUrl": "https://michael.stapelberg.ch/feed.xml", "htmlUrl": "https://michael.stapelberg.ch" },
-  { "name": "miguelgrinberg.com", "xmlUrl": "https://blog.miguelgrinberg.com/feed", "htmlUrl": "https://miguelgrinberg.com" },
-  { "name": "keygen.sh", "xmlUrl": "https://keygen.sh/blog/feed.xml", "htmlUrl": "https://keygen.sh" },
-  { "name": "mjg59.dreamwidth.org", "xmlUrl": "https://mjg59.dreamwidth.org/data/rss", "htmlUrl": "https://mjg59.dreamwidth.org" },
-  { "name": "computer.rip", "xmlUrl": "https://computer.rip/rss.xml", "htmlUrl": "https://computer.rip" },
-  { "name": "tedunangst.com", "xmlUrl": "https://www.tedunangst.com/flak/rss", "htmlUrl": "https://tedunangst.com" },
+    {"name": "simonwillison.net", "xmlUrl": "https://simonwillison.net/atom/everything/", "htmlUrl": "https://simonwillison.net"},
+    {"name": "jeffgeerling.com", "xmlUrl": "https://www.jeffgeerling.com/blog.xml", "htmlUrl": "https://jeffgeerling.com"},
+    {"name": "seangoedecke.com", "xmlUrl": "https://www.seangoedecke.com/rss.xml", "htmlUrl": "https://seangoedecke.com"},
+    {"name": "krebsonsecurity.com", "xmlUrl": "https://krebsonsecurity.com/feed/", "htmlUrl": "https://krebsonsecurity.com"},
+    {"name": "daringfireball.net", "xmlUrl": "https://daringfireball.net/feeds/main", "htmlUrl": "https://daringfireball.net"},
+    {"name": "ericmigi.com", "xmlUrl": "https://ericmigi.com/rss.xml", "htmlUrl": "https://ericmigi.com"},
+    {"name": "antirez.com", "xmlUrl": "http://antirez.com/rss", "htmlUrl": "http://antirez.com"},
+    {"name": "idiallo.com", "xmlUrl": "https://idiallo.com/feed.rss", "htmlUrl": "https://idiallo.com"},
+    {"name": "maurycyz.com", "xmlUrl": "https://maurycyz.com/index.xml", "htmlUrl": "https://maurycyz.com"},
+    {"name": "pluralistic.net", "xmlUrl": "https://pluralistic.net/feed/", "htmlUrl": "https://pluralistic.net"},
+    {"name": "shkspr.mobi", "xmlUrl": "https://shkspr.mobi/blog/feed/", "htmlUrl": "https://shkspr.mobi"},
+    {"name": "lcamtuf.substack.com", "xmlUrl": "https://lcamtuf.substack.com/feed", "htmlUrl": "https://lcamtuf.substack.com"},
+    {"name": "mitchellh.com", "xmlUrl": "https://mitchellh.com/feed.xml", "htmlUrl": "https://mitchellh.com"},
+    {"name": "dynomight.net", "xmlUrl": "https://dynomight.net/feed.xml", "htmlUrl": "https://dynomight.net"},
+    {"name": "utcc.utoronto.ca/~cks", "xmlUrl": "https://utcc.utoronto.ca/~cks/space/blog/?atom", "htmlUrl": "https://utcc.utoronto.ca/~cks"},
+    {"name": "xeiaso.net", "xmlUrl": "https://xeiaso.net/blog.rss", "htmlUrl": "https://xeiaso.net"},
+    {"name": "devblogs.microsoft.com/oldnewthing", "xmlUrl": "https://devblogs.microsoft.com/oldnewthing/feed", "htmlUrl": "https://devblogs.microsoft.com/oldnewthing"},
+    {"name": "righto.com", "xmlUrl": "https://www.righto.com/feeds/posts/default", "htmlUrl": "https://righto.com"},
+    {"name": "lucumr.pocoo.org", "xmlUrl": "https://lucumr.pocoo.org/feed.atom", "htmlUrl": "https://lucumr.pocoo.org"},
+    {"name": "skyfall.dev", "xmlUrl": "https://skyfall.dev/rss.xml", "htmlUrl": "https://skyfall.dev"},
+    {"name": "garymarcus.substack.com", "xmlUrl": "https://garymarcus.substack.com/feed", "htmlUrl": "https://garymarcus.substack.com"},
+    {"name": "rachelbythebay.com", "xmlUrl": "https://rachelbythebay.com/w/atom.xml", "htmlUrl": "https://rachelbythebay.com"},
+    {"name": "overreacted.io", "xmlUrl": "https://overreacted.io/rss.xml", "htmlUrl": "https://overreacted.io"},
+    {"name": "timsh.org", "xmlUrl": "https://timsh.org/rss/", "htmlUrl": "https://timsh.org"},
+    {"name": "johndcook.com", "xmlUrl": "https://www.johndcook.com/blog/feed/", "htmlUrl": "https://johndcook.com"},
+    {"name": "gilesthomas.com", "xmlUrl": "https://gilesthomas.com/feed/rss.xml", "htmlUrl": "https://gilesthomas.com"},
+    {"name": "matklad.github.io", "xmlUrl": "https://matklad.github.io/feed.xml", "htmlUrl": "https://matklad.github.io"},
+    {"name": "derekthompson.org", "xmlUrl": "https://www.theatlantic.com/feed/author/derek-thompson/", "htmlUrl": "https://derekthompson.org"},
+    {"name": "evanhahn.com", "xmlUrl": "https://evanhahn.com/feed.xml", "htmlUrl": "https://evanhahn.com"},
+    {"name": "terriblesoftware.org", "xmlUrl": "https://terriblesoftware.org/feed/", "htmlUrl": "https://terriblesoftware.org"},
+    {"name": "rakhim.exotext.com", "xmlUrl": "https://rakhim.exotext.com/rss.xml", "htmlUrl": "https://rakhim.exotext.com"},
+    {"name": "joanwestenberg.com", "xmlUrl": "https://joanwestenberg.com/rss", "htmlUrl": "https://joanwestenberg.com"},
+    {"name": "xania.org", "xmlUrl": "https://xania.org/feed", "htmlUrl": "https://xania.org"},
+    {"name": "micahflee.com", "xmlUrl": "https://micahflee.com/feed/", "htmlUrl": "https://micahflee.com"},
+    {"name": "nesbitt.io", "xmlUrl": "https://nesbitt.io/feed.xml", "htmlUrl": "https://nesbitt.io"},
+    {"name": "construction-physics.com", "xmlUrl": "https://www.construction-physics.com/feed", "htmlUrl": "https://construction-physics.com"},
+    {"name": "tedium.co", "xmlUrl": "https://feed.tedium.co/", "htmlUrl": "https://tedium.co"},
+    {"name": "susam.net", "xmlUrl": "https://susam.net/feed.xml", "htmlUrl": "https://susam.net"},
+    {"name": "entropicthoughts.com", "xmlUrl": "https://entropicthoughts.com/feed.xml", "htmlUrl": "https://entropicthoughts.com"},
+    {"name": "buttondown.com/hillelwayne", "xmlUrl": "https://buttondown.com/hillelwayne/rss", "htmlUrl": "https://buttondown.com/hillelwayne"},
+    {"name": "dwarkesh.com", "xmlUrl": "https://www.dwarkeshpatel.com/feed", "htmlUrl": "https://dwarkesh.com"},
+    {"name": "borretti.me", "xmlUrl": "https://borretti.me/feed.xml", "htmlUrl": "https://borretti.me"},
+    {"name": "wheresyoured.at", "xmlUrl": "https://www.wheresyoured.at/rss/", "htmlUrl": "https://wheresyoured.at"},
+    {"name": "jayd.ml", "xmlUrl": "https://jayd.ml/feed.xml", "htmlUrl": "https://jayd.ml"},
+    {"name": "minimaxir.com", "xmlUrl": "https://minimaxir.com/index.xml", "htmlUrl": "https://minimaxir.com"},
+    {"name": "geohot.github.io", "xmlUrl": "https://geohot.github.io/blog/feed.xml", "htmlUrl": "https://geohot.github.io"},
+    {"name": "paulgraham.com", "xmlUrl": "http://www.aaronsw.com/2002/feeds/pgessays.rss", "htmlUrl": "https://paulgraham.com"},
+    {"name": "filfre.net", "xmlUrl": "https://www.filfre.net/feed/", "htmlUrl": "https://filfre.net"},
+    {"name": "blog.jim-nielsen.com", "xmlUrl": "https://blog.jim-nielsen.com/feed.xml", "htmlUrl": "https://blog.jim-nielsen.com"},
+    {"name": "dfarq.homeip.net", "xmlUrl": "https://dfarq.homeip.net/feed/", "htmlUrl": "https://dfarq.homeip.net"},
+    {"name": "jyn.dev", "xmlUrl": "https://jyn.dev/atom.xml", "htmlUrl": "https://jyn.dev"},
+    {"name": "geoffreylitt.com", "xmlUrl": "https://www.geoffreylitt.com/feed.xml", "htmlUrl": "https://geoffreylitt.com"},
+    {"name": "downtowndougbrown.com", "xmlUrl": "https://www.downtowndougbrown.com/feed/", "htmlUrl": "https://downtowndougbrown.com"},
+    {"name": "brutecat.com", "xmlUrl": "https://brutecat.com/rss.xml", "htmlUrl": "https://brutecat.com"},
+    {"name": "eli.thegreenplace.net", "xmlUrl": "https://eli.thegreenplace.net/feeds/all.atom.xml", "htmlUrl": "https://eli.thegreenplace.net"},
+    {"name": "abortretry.fail", "xmlUrl": "https://www.abortretry.fail/feed", "htmlUrl": "https://abortretry.fail"},
+    {"name": "fabiensanglard.net", "xmlUrl": "https://fabiensanglard.net/rss.xml", "htmlUrl": "https://fabiensanglard.net"},
+    {"name": "oldvcr.blogspot.com", "xmlUrl": "https://oldvcr.blogspot.com/feeds/posts/default", "htmlUrl": "https://oldvcr.blogspot.com"},
+    {"name": "bogdanthegeek.github.io", "xmlUrl": "https://bogdanthegeek.github.io/blog/index.xml", "htmlUrl": "https://bogdanthegeek.github.io"},
+    {"name": "hugotunius.se", "xmlUrl": "https://hugotunius.se/feed.xml", "htmlUrl": "https://hugotunius.se"},
+    {"name": "gwern.net", "xmlUrl": "https://gwern.substack.com/feed", "htmlUrl": "https://gwern.net"},
+    {"name": "berthub.eu", "xmlUrl": "https://berthub.eu/articles/index.xml", "htmlUrl": "https://berthub.eu"},
+    {"name": "chadnauseam.com", "xmlUrl": "https://chadnauseam.com/rss.xml", "htmlUrl": "https://chadnauseam.com"},
+    {"name": "simone.org", "xmlUrl": "https://simone.org/feed/", "htmlUrl": "https://simone.org"},
+    {"name": "it-notes.dragas.net", "xmlUrl": "https://it-notes.dragas.net/feed/", "htmlUrl": "https://it-notes.dragas.net"},
+    {"name": "beej.us", "xmlUrl": "https://beej.us/blog/rss.xml", "htmlUrl": "https://beej.us"},
+    {"name": "hey.paris", "xmlUrl": "https://hey.paris/index.xml", "htmlUrl": "https://hey.paris"},
+    {"name": "danielwirtz.com", "xmlUrl": "https://danielwirtz.com/rss.xml", "htmlUrl": "https://danielwirtz.com"},
+    {"name": "matduggan.com", "xmlUrl": "https://matduggan.com/rss/", "htmlUrl": "https://matduggan.com"},
+    {"name": "refactoringenglish.com", "xmlUrl": "https://refactoringenglish.com/index.xml", "htmlUrl": "https://refactoringenglish.com"},
+    {"name": "worksonmymachine.substack.com", "xmlUrl": "https://worksonmymachine.substack.com/feed", "htmlUrl": "https://worksonmymachine.substack.com"},
+    {"name": "philiplaine.com", "xmlUrl": "https://philiplaine.com/index.xml", "htmlUrl": "https://philiplaine.com"},
+    {"name": "steveblank.com", "xmlUrl": "https://steveblank.com/feed/", "htmlUrl": "https://steveblank.com"},
+    {"name": "bernsteinbear.com", "xmlUrl": "https://bernsteinbear.com/feed.xml", "htmlUrl": "https://bernsteinbear.com"},
+    {"name": "danieldelaney.net", "xmlUrl": "https://danieldelaney.net/feed", "htmlUrl": "https://danieldelaney.net"},
+    {"name": "troyhunt.com", "xmlUrl": "https://www.troyhunt.com/rss/", "htmlUrl": "https://troyhunt.com"},
+    {"name": "herman.bearblog.dev", "xmlUrl": "https://herman.bearblog.dev/feed/", "htmlUrl": "https://herman.bearblog.dev"},
+    {"name": "tomrenner.com", "xmlUrl": "https://tomrenner.com/index.xml", "htmlUrl": "https://tomrenner.com"},
+    {"name": "blog.pixelmelt.dev", "xmlUrl": "https://blog.pixelmelt.dev/rss/", "htmlUrl": "https://blog.pixelmelt.dev"},
+    {"name": "martinalderson.com", "xmlUrl": "https://martinalderson.com/feed.xml", "htmlUrl": "https://martinalderson.com"},
+    {"name": "danielchasehooper.com", "xmlUrl": "https://danielchasehooper.com/feed.xml", "htmlUrl": "https://danielchasehooper.com"},
+    {"name": "chiark.greenend.org.uk/~sgtatham", "xmlUrl": "https://www.chiark.greenend.org.uk/~sgtatham/quasiblog/feed.xml", "htmlUrl": "https://chiark.greenend.org.uk/~sgtatham"},
+    {"name": "grantslatton.com", "xmlUrl": "https://grantslatton.com/rss.xml", "htmlUrl": "https://grantslatton.com"},
+    {"name": "experimental-history.com", "xmlUrl": "https://www.experimental-history.com/feed", "htmlUrl": "https://experimental-history.com"},
+    {"name": "anildash.com", "xmlUrl": "https://anildash.com/feed.xml", "htmlUrl": "https://anildash.com"},
+    {"name": "aresluna.org", "xmlUrl": "https://aresluna.org/main.rss", "htmlUrl": "https://aresluna.org"},
+    {"name": "michael.stapelberg.ch", "xmlUrl": "https://michael.stapelberg.ch/feed.xml", "htmlUrl": "https://michael.stapelberg.ch"},
+    {"name": "miguelgrinberg.com", "xmlUrl": "https://blog.miguelgrinberg.com/feed", "htmlUrl": "https://miguelgrinberg.com"},
+    {"name": "keygen.sh", "xmlUrl": "https://keygen.sh/blog/feed.xml", "htmlUrl": "https://keygen.sh"},
+    {"name": "mjg59.dreamwidth.org", "xmlUrl": "https://mjg59.dreamwidth.org/data/rss", "htmlUrl": "https://mjg59.dreamwidth.org"},
+    {"name": "computer.rip", "xmlUrl": "https://computer.rip/rss.xml", "htmlUrl": "https://computer.rip"},
+    {"name": "tedunangst.com", "xmlUrl": "https://www.tedunangst.com/flak/rss", "htmlUrl": "https://tedunangst.com"},
 ]
 
 CATEGORY_META = {
@@ -130,6 +130,7 @@ CATEGORY_META = {
     'other': {'emoji': '📝', 'label': '其他'},
 }
 
+
 def strip_html(html: str) -> str:
     """去除非法字符和 HTML 标签"""
     if not html:
@@ -139,9 +140,11 @@ def strip_html(html: str) -> str:
     text = text.replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
     return text.strip()
 
+
 def extract_cdata(text: str) -> str:
     match = re.search(r'<!\[CDATA\[([\s\S]*?)\]\]>', text)
     return match.group(1) if match else text
+
 
 def get_tag_content(xml: str, tag_name: str) -> str:
     patterns = [
@@ -153,6 +156,7 @@ def get_tag_content(xml: str, tag_name: str) -> str:
         if match and match.groups():
             return strip_html(extract_cdata(match.group(1))).strip()
     return ''
+
 
 def parse_date(date_str: str) -> datetime:
     if not date_str:
@@ -173,10 +177,11 @@ def parse_date(date_str: str) -> datetime:
     except Exception:
         return datetime.fromtimestamp(0, tz=timezone.utc)
 
+
 def parse_rss_items(xml: str) -> List[Dict[str, str]]:
     items = []
     is_atom = '<feed' in xml and 'http://www.w3.org/2005/Atom' in xml or '<feed ' in xml
-    
+
     if is_atom:
         entries = re.findall(r'<entry[\s>]([\s\S]*?)</entry>', xml, re.IGNORECASE)
         for entry in entries:
@@ -200,11 +205,12 @@ def parse_rss_items(xml: str) -> List[Dict[str, str]]:
                 items.append({'title': title, 'link': link, 'pubDate': pub_date, 'description': desc[:500]})
     return items
 
+
 def fetch_feed(feed: Dict[str, str], max_age_days: int) -> List[Dict[str, Any]]:
     articles = []
     try:
         req = urllib.request.Request(
-            feed['xmlUrl'], 
+            feed['xmlUrl'],
             headers={'User-Agent': 'AI-Daily-Digest/1.0 (RSS Reader)', 'Accept': 'application/xml, text/xml, */*'}
         )
         with urllib.request.urlopen(req, timeout=15) as response:
@@ -227,6 +233,7 @@ def fetch_feed(feed: Dict[str, str], max_age_days: int) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.debug(f"[AIDigest] Failed to fetch {feed['name']}: {e}")
     return articles
+
 
 class AIDailyDigestService:
     def __init__(self):
@@ -279,10 +286,11 @@ class AIDailyDigestService:
         scored_articles = []
         batch_size = 10
         for i in range(0, len(articles), batch_size):
-            batch = articles[i:i+batch_size]
+            batch = articles[i:i + batch_size]
             prompt = self._build_scoring_prompt(batch)
             result_str = self.call_ai(prompt, json_format=True)
-            if not result_str: continue
+            if not result_str:
+                continue
             try:
                 # remove Markdown code blocks if any
                 if result_str.startswith('```'):
@@ -355,13 +363,14 @@ class AIDailyDigestService:
     def summarize_top_articles(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         articles.sort(key=lambda x: x.get('score', 0), reverse=True)
         top_articles = articles[:self.top_n]
-        
+
         batch_size = 5
         for i in range(0, len(top_articles), batch_size):
-            batch = top_articles[i:i+batch_size]
+            batch = top_articles[i:i + batch_size]
             prompt = self._build_summary_prompt(batch)
             result_str = self.call_ai(prompt, json_format=True)
-            if not result_str: continue
+            if not result_str:
+                continue
             try:
                 if result_str.startswith('```'):
                     result_str = re.sub(r'^```(json)?\n?|\n?```$', '', result_str.strip())
@@ -412,8 +421,9 @@ class AIDailyDigestService:
 }}"""
 
     def generate_highlights(self, top_articles: List[Dict[str, Any]]) -> str:
-        if not top_articles: return "无精选文章。"
-        article_list = "\n".join([f"{i+1}. [{a.get('category')}] {a.get('titleZh', a['title'])} - {a.get('summary', '')[:100]}" for i, a in enumerate(top_articles[:10])])
+        if not top_articles:
+            return "无精选文章。"
+        article_list = "\n".join([f"{i + 1}. [{a.get('category')}] {a.get('titleZh', a['title'])} - {a.get('summary', '')[:100]}" for i, a in enumerate(top_articles[:10])])
         prompt = f"根据以下今日精选技术文章列表，写一段 3-5 句话的宏观趋势总结。直接返回纯文本。\n\n{article_list}"
         return self.call_ai(prompt).strip()
 
@@ -424,9 +434,12 @@ class AIDailyDigestService:
         diff_hours = int(diff.total_seconds() / 3600)
         diff_days = diff.days
 
-        if diff_mins < 60: return f"{diff_mins} 分钟前"
-        if diff_hours < 24: return f"{diff_hours} 小时前"
-        if diff_days < 7: return f"{diff_days} 天前"
+        if diff_mins < 60:
+            return f"{diff_mins} 分钟前"
+        if diff_hours < 24:
+            return f"{diff_hours} 小时前"
+        if diff_days < 7:
+            return f"{diff_days} 天前"
         return pub_date.strftime('%Y-%m-%d')
 
     def generate_keyword_bar_chart(self, articles: List[Dict[str, Any]]) -> str:
@@ -435,14 +448,15 @@ class AIDailyDigestService:
             for kw in a.get('keywords', []):
                 norm = kw.lower()
                 kw_count[norm] = kw_count.get(norm, 0) + 1
-        
+
         sorted_kw = sorted(kw_count.items(), key=lambda x: x[1], reverse=True)[:12]
-        if not sorted_kw: return ""
-        
+        if not sorted_kw:
+            return ""
+
         labels = ", ".join([f'"{k}"' for k, v in sorted_kw])
         values = ", ".join([str(v) for k, v in sorted_kw])
         max_val = sorted_kw[0][1]
-        
+
         chart = "```mermaid\nxychart-beta horizontal\n"
         chart += '    title "高频关键词"\n'
         chart += f"    x-axis [{labels}]\n"
@@ -456,8 +470,9 @@ class AIDailyDigestService:
         for a in articles:
             cat = a.get('category', 'other')
             cat_count[cat] = cat_count.get(cat, 0) + 1
-        if not cat_count: return ""
-        
+        if not cat_count:
+            return ""
+
         sorted_cat = sorted(cat_count.items(), key=lambda x: x[1], reverse=True)
         chart = "```mermaid\npie showData\n"
         chart += '    title "文章分类分布"\n'
@@ -473,14 +488,15 @@ class AIDailyDigestService:
             for kw in a.get('keywords', []):
                 norm = kw.lower()
                 kw_count[norm] = kw_count.get(norm, 0) + 1
-        
+
         sorted_kw = sorted(kw_count.items(), key=lambda x: x[1], reverse=True)[:10]
-        if not sorted_kw: return ""
-        
+        if not sorted_kw:
+            return ""
+
         max_val = sorted_kw[0][1]
         max_bar_width = 20
         max_label_len = max(len(k) for k, v in sorted_kw)
-        
+
         chart = "```\n"
         for label, value in sorted_kw:
             bar_len = max(1, round((value / max_val) * max_bar_width))
@@ -495,10 +511,11 @@ class AIDailyDigestService:
             for kw in a.get('keywords', []):
                 norm = kw.lower()
                 kw_count[norm] = kw_count.get(norm, 0) + 1
-        
+
         sorted_kw = sorted(kw_count.items(), key=lambda x: x[1], reverse=True)[:20]
-        if not sorted_kw: return ""
-        
+        if not sorted_kw:
+            return ""
+
         tags = []
         for i, (word, count) in enumerate(sorted_kw):
             if i < 3:
@@ -513,16 +530,16 @@ class AIDailyDigestService:
             if self.last_error:
                 msg += f"\n\n> ⚠️ **诊断信息**: {self.last_error}\n> 请检查 API Key 是否有效，以及 `LITELLM_MODEL` 配置是否正确。"
             return msg
-        
+
         now = datetime.now(timezone.utc)
         date_str = now.strftime('%Y-%m-%d')
-        
+
         report = f"# 📰 AI 博客每日精选 — {date_str}\n\n"
         report += f"> 来自 Karpathy 推荐的顶级技术博客，AI 精选 Top {len(top_articles)}\n\n"
-        
+
         if highlights:
             report += f"## 📝 今日看点\n\n{highlights}\n\n---\n\n"
-            
+
         if len(top_articles) >= 3:
             report += "## 🏆 今日必读\n\n"
             medals = ['🥇', '🥈', '🥉']
@@ -530,7 +547,7 @@ class AIDailyDigestService:
                 a = top_articles[i]
                 medal = medals[i]
                 cat_meta = CATEGORY_META.get(a.get('category', 'other'), CATEGORY_META['other'])
-                
+
                 report += f"{medal} **{a.get('titleZh', a['title'])}**\n\n"
                 report += f"[{a['title']}]({a['link']}) — {a['sourceName']} · {self.humanize_time(a['pubDate'])} · {cat_meta['emoji']} {cat_meta['label']}\n\n"
                 report += f"> {a.get('summary', '')}\n\n"
@@ -539,39 +556,40 @@ class AIDailyDigestService:
                 if a.get('keywords'):
                     report += f"🏷️ {', '.join(a['keywords'])}\n\n"
             report += "---\n\n"
-            
+
         report += "## 📊 数据概览\n\n"
-        
+
         pie_chart = self.generate_category_pie_chart(top_articles)
         if pie_chart:
             report += f"### 分类分布\n\n{pie_chart}\n"
-            
+
         bar_chart = self.generate_keyword_bar_chart(top_articles)
         if bar_chart:
             report += f"### 高频关键词\n\n{bar_chart}\n"
-            
+
         ascii_chart = self.generate_ascii_bar_chart(top_articles)
         if ascii_chart:
             report += f"<details>\n<summary>📈 纯文本关键词图（终端友好）</summary>\n\n{ascii_chart}\n</details>\n\n"
-            
+
         tag_cloud = self.generate_tag_cloud(top_articles)
         if tag_cloud:
             report += f"### 🏷️ 话题标签\n\n{tag_cloud}\n\n"
-            
+
         report += "---\n\n"
-        
+
         grouped = {}
         for a in top_articles:
             cat = a.get('category', 'other')
-            if cat not in grouped: grouped[cat] = []
+            if cat not in grouped:
+                grouped[cat] = []
             grouped[cat].append(a)
-            
+
         sorted_categories = sorted(grouped.items(), key=lambda x: len(x[1]), reverse=True)
         global_index = 0
         for cat, cat_articles in sorted_categories:
             meta = CATEGORY_META.get(cat, CATEGORY_META['other'])
             report += f"## {meta['emoji']} {meta['label']}\n\n"
-            
+
             for a in cat_articles:
                 global_index += 1
                 score_total = a.get('score', 0)
@@ -581,12 +599,12 @@ class AIDailyDigestService:
                 if a.get('keywords'):
                     report += f"🏷️ {', '.join(a['keywords'])}\n\n"
                 report += "---\n\n"
-                
+
         time_hm = now.strftime('%H:%M')
         report += f"*生成于 {date_str} {time_hm} | 精选 {len(top_articles)} 篇*\n"
         report += "*基于 [Hacker News Popularity Contest 2025](https://refactoringenglish.com/tools/hn-popularity/) RSS 源列表，由 [Andrej Karpathy](https://x.com/karpathy) 推荐*\n"
         report += "*由「懂点儿AI」制作，欢迎关注同名微信公众号获取更多 AI 实用技巧 💡*\n"
-        
+
         return report
 
     def run(self) -> str:
