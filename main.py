@@ -140,6 +140,18 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        '--digest',
+        action='store_true',
+        help='执行 AI 每日技术资讯摘要（可与全量分析一起运行）'
+    )
+
+    parser.add_argument(
+        '--digest-only',
+        action='store_true',
+        help='仅运行 AI 每日技术资讯摘要'
+    )
+
+    parser.add_argument(
         '--webui',
         action='store_true',
         help='启动 Web 管理界面'
@@ -438,6 +450,20 @@ def run_full_analysis(
         except Exception as e:
             logger.warning(f"自动回测失败（已忽略）: {e}")
 
+        # === AI Daily Digest ===
+        if getattr(args, 'digest', False) or getattr(config, 'ai_daily_digest_enabled', False):
+            try:
+                logger.info("开始执行 AI Daily Digest...")
+                from src.services.ai_daily_digest import AIDailyDigestService
+                digest_service = AIDailyDigestService()
+                report = digest_service.run()
+                
+                if report and not args.no_notify:
+                    pipeline.notifier.send(report)
+                    logger.info("AI Daily Digest 发送完成")
+            except Exception as e:
+                logger.error(f"AI Daily Digest 执行失败: {e}")
+
     except Exception as e:
         logger.exception(f"分析流程执行失败: {e}")
 
@@ -596,7 +622,20 @@ def main() -> int:
         return 0
 
     try:
-        # 模式0: 回测
+        # 模式0: 仅 AI Daily Digest
+        if getattr(args, 'digest_only', False):
+            logger.info("模式: 仅运行 AI Daily Digest")
+            from src.services.ai_daily_digest import AIDailyDigestService
+            from src.notification import NotificationService
+            notifier = NotificationService()
+            digest_service = AIDailyDigestService()
+            report = digest_service.run()
+            if report and not args.no_notify:
+                notifier.send(report)
+                logger.info("AI Daily Digest 发送完成")
+            return 0
+
+        # 模式1: 回测
         if getattr(args, 'backtest', False):
             logger.info("模式: 回测")
             from src.services.backtest_service import BacktestService

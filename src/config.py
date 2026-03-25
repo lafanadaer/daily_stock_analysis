@@ -656,6 +656,12 @@ class Config:
     # 交易日检查：默认启用，非交易日跳过执行；设为 false 或 --force-run 可强制执行（Issue #373）
     trading_day_check_enabled: bool = True
 
+    # === AI Daily Digest 配置 ===
+    ai_daily_digest_enabled: bool = False
+    ai_daily_digest_days: int = 2
+    ai_daily_digest_top_n: int = 15
+    ai_daily_digest_language: str = "zh"
+
     # === 实时行情增强数据配置 ===
     # 实时行情开关（关闭后使用历史收盘价进行分析）
     enable_realtime_quote: bool = True
@@ -1351,7 +1357,11 @@ class Config:
                 field_name='PORTFOLIO_RISK_LOOKBACK_DAYS',
                 minimum=1,
             ),
-            portfolio_fx_update_enabled=os.getenv('PORTFOLIO_FX_UPDATE_ENABLED', 'true').lower() == 'true'
+            portfolio_fx_update_enabled=os.getenv('PORTFOLIO_FX_UPDATE_ENABLED', 'true').lower() == 'true',
+            ai_daily_digest_enabled=os.getenv('AI_DAILY_DIGEST_ENABLED', 'false').lower() == 'true',
+            ai_daily_digest_days=parse_env_int(os.getenv('AI_DAILY_DIGEST_DAYS'), 2, field_name='AI_DAILY_DIGEST_DAYS', minimum=1),
+            ai_daily_digest_top_n=parse_env_int(os.getenv('AI_DAILY_DIGEST_TOP_N'), 15, field_name='AI_DAILY_DIGEST_TOP_N', minimum=1),
+            ai_daily_digest_language=os.getenv('AI_DAILY_DIGEST_LANGUAGE', 'zh')
         )
     
     @classmethod
