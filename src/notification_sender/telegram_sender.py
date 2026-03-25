@@ -122,21 +122,6 @@ class TelegramSender:
                     error_desc = result.get('description', '未知错误')
                     logger.error(f"Telegram 返回错误: {error_desc}")
                     
-                    # If Markdown parsing failed, fall back to plain text
-                    if 'parse' in error_desc.lower() or 'markdown' in error_desc.lower():
-                        logger.info("尝试使用纯文本格式重新发送...")
-                        plain_payload = dict(payload)
-                        plain_payload.pop('parse_mode', None)
-                        plain_payload['text'] = text  # Use original text
-                        
-                        try:
-                            response = requests.post(api_url, json=plain_payload, timeout=10)
-                            if response.status_code == 200 and response.json().get('ok'):
-                                logger.info("Telegram 消息发送成功（纯文本）")
-                                return True
-                        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                            logger.error(f"Telegram plain-text fallback failed: {e}")
-                    
                     return False
             elif response.status_code == 429:
                 # Rate limited — respect Retry-After header
@@ -158,6 +143,26 @@ class TelegramSender:
                     continue
                 logger.error(f"Telegram 请求失败: HTTP {response.status_code}")
                 logger.error(f"响应内容: {response.text}")
+                
+                 # If Markdown parsing failed, fall back to plain text
+                try:
+                    error_desc = response.json().get('description', '')
+                except Exception:
+                    error_desc = response.text
+                    
+                if response.status_code == 400 and ('parse' in error_desc.lower() or 'markdown' in error_desc.lower() or "can't find end" in error_desc.lower()):
+                    logger.info("解析错误，尝试使用纯文本格式降级发送...")
+                    plain_payload = dict(payload)
+                    plain_payload.pop('parse_mode', None)
+                    plain_payload['text'] = text  # Use original text
+                    try:
+                        res = requests.post(api_url, json=plain_payload, timeout=10)
+                        if res.status_code == 200 and res.json().get('ok'):
+                            logger.info("Telegram 消息发送成功（纯文本）")
+                            return True
+                    except Exception as e:
+                        logger.error(f"Telegram plain-text fallback failed: {e}")
+                        
                 return False
 
         return False
