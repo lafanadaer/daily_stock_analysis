@@ -288,14 +288,14 @@ def run_full_analysis(
             config, args, effective_codes
         )
         if should_skip:
-            logger.info(
-                "今日所有相关市场均为非交易日，跳过执行。可使用 --force-run 强制执行。"
-            )
-            return
-        if set(filtered_codes) != set(effective_codes):
-            skipped = set(effective_codes) - set(filtered_codes)
-            logger.info("今日休市股票已跳过: %s", skipped)
-        stock_codes = filtered_codes
+            logger.info("今日相关市场休市，跳过股票及大盘分析执行（AI Digest等如果配置了将继续运行）。")
+            stock_codes = []
+            effective_region = ''
+        else:
+            if set(filtered_codes) != set(effective_codes):
+                skipped = set(effective_codes) - set(filtered_codes)
+                logger.info("今日休市股票已跳过: %s", skipped)
+            stock_codes = filtered_codes
 
         # 命令行参数 --single-notify 覆盖配置（#55）
         if getattr(args, 'single_notify', False):
@@ -304,9 +304,7 @@ def run_full_analysis(
         # Issue #190: 个股与大盘复盘合并推送
         merge_notification = (
             getattr(config, 'merge_email_notification', False)
-            and config.market_review_enabled
-            and not getattr(args, 'no_market_review', False)
-            and not config.single_stock_notify
+            and not getattr(config, 'single_stock_notify', False)
         )
 
         # 创建调度器
@@ -360,8 +358,11 @@ def run_full_analysis(
             if review_result:
                 market_report = review_result
 
-        # Issue #190: 合并推送（个股+大盘复盘）
-        if merge_notification and (results or market_report) and not args.no_notify:
+        # 3. 运行 AI Daily Digest (如果配置为合并推送，则在这里不独立发送，而是统一收起来合并发送)
+        digest_report = run_ai_daily_digest(config, args, send_notify=not merge_notification)
+
+        # Issue #190: 合并推送（个股+大盘复盘+AI摘要）
+        if merge_notification and (results or market_report or digest_report) and not args.no_notify:
             parts = []
             if market_report:
                 parts.append(f"# 📈 大盘复盘\n\n{market_report}")
@@ -371,11 +372,14 @@ def run_full_analysis(
                     getattr(config, 'report_type', 'simple'),
                 )
                 parts.append(f"# 🚀 个股决策仪表盘\n\n{dashboard_content}")
+            if digest_report:
+                parts.append(digest_report)
+
             if parts:
                 combined_content = "\n\n---\n\n".join(parts)
                 if pipeline.notifier.is_available():
                     if pipeline.notifier.send(combined_content, email_send_to_all=True):
-                        logger.info("已合并推送（个股+大盘复盘）")
+                        logger.info("已合并推送（个股+大盘复盘+AI摘要）")
                     else:
                         logger.warning("合并推送失败")
 
@@ -396,15 +400,16 @@ def run_full_analysis(
             from src.feishu_doc import FeishuDocManager
 
             feishu_doc = FeishuDocManager()
-            if feishu_doc.is_configured() and (results or market_report):
+            if feishu_doc.is_configured() and (results or market_report or digest_report):
                 logger.info("正在创建飞书云文档...")
 
                 # 1. 准备标题 "01-01 13:01大盘复盘"
                 tz_cn = timezone(timedelta(hours=8))
                 now = datetime.now(tz_cn)
-                doc_title = f"{now.strftime('%Y-%m-%d %H:%M')} 大盘复盘"
+                title_suffix = "大盘复盘" if market_report or results else "科技资讯"
+                doc_title = f"{now.strftime('%Y-%m-%d %H:%M')} {title_suffix}"
 
-                # 2. 准备内容 (拼接个股分析和大盘复盘)
+                # 2. 准备内容 (拼接个股分析、大盘复盘、AI 摘要)
                 full_content = ""
 
                 # 添加大盘复盘内容（如果有）
@@ -417,7 +422,11 @@ def run_full_analysis(
                         results,
                         getattr(config, 'report_type', 'simple'),
                     )
-                    full_content += f"# 🚀 个股决策仪表盘\n\n{dashboard_content}"
+                    full_content += f"# 🚀 个股决策仪表盘\n\n{dashboard_content}\n\n---\n\n"
+                    
+                # 添加 AI 摘要
+                if digest_report:
+                    full_content += digest_report
 
                 # 3. 创建文档
                 doc_url = feishu_doc.create_daily_doc(doc_title, full_content)
@@ -432,7 +441,7 @@ def run_full_analysis(
 
         # === Auto backtest ===
         try:
-            if getattr(config, 'backtest_enabled', False):
+            if not should_skip and getattr(config, 'backtest_enabled', False):
                 from src.services.backtest_service import BacktestService
 
                 logger.info("开始自动回测...")
@@ -450,22 +459,33 @@ def run_full_analysis(
         except Exception as e:
             logger.warning(f"自动回测失败（已忽略）: {e}")
 
-        # === AI Daily Digest ===
-        if getattr(args, 'digest', False) or getattr(config, 'ai_daily_digest_enabled', False):
-            try:
-                logger.info("开始执行 AI Daily Digest...")
-                from src.services.ai_daily_digest import AIDailyDigestService
-                digest_service = AIDailyDigestService()
-                report = digest_service.run()
-                
-                if report and not args.no_notify:
-                    pipeline.notifier.send(report)
-                    logger.info("AI Daily Digest 发送完成")
-            except Exception as e:
-                logger.error(f"AI Daily Digest 执行失败: {e}")
-
     except Exception as e:
         logger.exception(f"分析流程执行失败: {e}")
+
+
+def run_ai_daily_digest(config: Config, args: argparse.Namespace, force: bool = False, send_notify: bool = True) -> str:
+    """
+    独立运行 AI Daily Digest
+    确保其与个股/大盘分析的交易日判断完全解耦
+    """
+    report = ""
+    if force or getattr(args, 'digest', False) or getattr(config, 'ai_daily_digest_enabled', False):
+        try:
+            logger.info("开始执行 AI Daily Digest...")
+            from src.services.ai_daily_digest import AIDailyDigestService
+            from src.notification import NotificationService
+            
+            digest_service = AIDailyDigestService()
+            report = digest_service.run()
+            
+            if report and send_notify and not getattr(args, 'no_notify', False):
+                notifier = NotificationService()
+                notifier.send(report)
+                logger.info("AI Daily Digest 独立发送完成")
+        except Exception as e:
+            logger.error(f"AI Daily Digest 执行失败: {e}")
+            
+    return report or ""
 
 
 def start_api_server(host: str, port: int, config: Config) -> None:
@@ -625,14 +645,7 @@ def main() -> int:
         # 模式0: 仅 AI Daily Digest
         if getattr(args, 'digest_only', False):
             logger.info("模式: 仅运行 AI Daily Digest")
-            from src.services.ai_daily_digest import AIDailyDigestService
-            from src.notification import NotificationService
-            notifier = NotificationService()
-            digest_service = AIDailyDigestService()
-            report = digest_service.run()
-            if report and not args.no_notify:
-                notifier.send(report)
-                logger.info("AI Daily Digest 发送完成")
+            run_ai_daily_digest(config, args, force=True)
             return 0
 
         # 模式1: 回测
