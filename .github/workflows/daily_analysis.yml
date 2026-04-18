@@ -11,12 +11,12 @@ on:
       mode:
         description: '运行模式'
         required: true
-        default: 'full'
+        default: 'full+digest'
         type: choice
         options:
+          - full+digest   # 完整分析 + 技术资讯摘要
           - full          # 完整分析（股票+大盘）
           - digest        # 技术资讯摘要 (AI Daily Digest)
-          - full+digest   # 完整分析 + 技术资讯摘要
           - market-only   # 仅大盘复盘
           - stocks-only   # 仅股票分析
       force_run:
@@ -203,7 +203,7 @@ jobs:
           fi
 
           # 判断运行模式
-          MODE="${{ github.event.inputs.mode || 'full' }}"
+          MODE="${{ github.event.inputs.mode || 'full+digest' }}"
           
           echo "=========================================="
           echo "🚀 A股自选股智能分析系统"

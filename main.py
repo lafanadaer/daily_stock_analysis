@@ -301,9 +301,10 @@ def run_full_analysis(
         if getattr(args, 'single_notify', False):
             config.single_stock_notify = True
 
-        # Issue #190: 个股与大盘复盘合并推送
+        # Issue #190: 个股与大盘复盘合并推送。为了实现“股票+AI同时推送”，当开启digest时默认视为合并推送。
+        is_digest_enabled = getattr(args, 'digest', False) or getattr(config, 'ai_daily_digest_enabled', False)
         merge_notification = (
-            getattr(config, 'merge_email_notification', False)
+            (getattr(config, 'merge_email_notification', False) or is_digest_enabled)
             and not getattr(config, 'single_stock_notify', False)
         )
 
