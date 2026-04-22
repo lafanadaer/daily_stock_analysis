@@ -202,8 +202,9 @@ jobs:
             echo "✅ LITELLM 配置文件已写入: $LITELLM_CONFIG"
           fi
 
-          # 判断运行模式
-          MODE="${{ github.event.inputs.mode || 'full+digest' }}"
+          # 判断运行模式 (避免 GH Actions 表达式在 schedule 时抛出未定义异常)
+          INPUT_MODE="${{ github.event.inputs.mode }}"
+          MODE="${INPUT_MODE:-full+digest}"
           
           echo "=========================================="
           echo "🚀 A股自选股智能分析系统"
